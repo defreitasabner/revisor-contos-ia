@@ -53,6 +53,8 @@ Inicie o servidor e acesse http://127.0.0.1:5000:
 
 Variáveis definidas no ambiente têm prioridade sobre as definidas no `.env`.
 
+As instruções do revisor ficam em [`prompts/default_system_prompt.txt`](./prompts/default_system_prompt.txt). A estrutura da mensagem com o contexto do autor e o conto fica em [`prompts/default_prompt_template.txt`](./prompts/default_prompt_template.txt). Edite esses arquivos e reinicie a aplicação para carregar as alterações.
+
 ## Limitações
 
 - O único provedor implementado é o Gemini.
