@@ -1,8 +1,7 @@
-import json
 import os
 
 from docx import Document
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, render_template, request
 from google import genai
 from google.genai import types
 from pypdf import PdfReader
@@ -41,6 +40,43 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/leitura-critica", methods=["GET", "POST"])
+def leitura_critica():
+    if request.method == "GET":
+        return render_template("leitura-critica.html")
+
+    context = request.form.get("context", "").strip()
+    upload = request.files.get("file")
+
+    def fail(error):
+        return render_template("leitura-critica.html", error=error, context=context), 400
+
+    if not upload or not upload.filename:
+        return fail("Envie o conto como arquivo (.docx, .pdf, .txt ou .md).")
+    try:
+        text = extract_text(upload)
+    except ValueError as e:
+        return fail(str(e))
+    except Exception:
+        return fail("Não foi possível ler o arquivo.")
+
+    prompt = PROMPT_TEMPLATE.format(
+        contexto=context or "(nenhum contexto informado)", conto=text
+    )
+    try:
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
+        )
+    except Exception as e:
+        return fail(f"Erro ao chamar o Gemini: {e}")
+
+    return render_template(
+        "resultado-leitura-critica.html", result=response.text, filename=upload.filename
+    )
+
+
 def extract_text(upload):
     ext = os.path.splitext(upload.filename)[1].lower()
     if ext == ".docx":
@@ -50,45 +86,6 @@ def extract_text(upload):
     if ext in (".txt", ".md"):
         return upload.read().decode("utf-8")
     raise ValueError("Formato não suportado. Envie .docx, .pdf, .txt ou .md.")
-
-
-@app.post("/chat")
-def chat():
-    message = request.form.get("message", "").strip()
-    history = json.loads(request.form.get("history", "[]"))
-
-    upload = request.files.get("file")
-    if upload and upload.filename:
-        try:
-            text = extract_text(upload)
-        except ValueError as e:
-            return jsonify(error=str(e)), 400
-        except Exception:
-            return jsonify(error="Não foi possível ler o arquivo."), 400
-        context = message or "(nenhum contexto informado)"
-        message = PROMPT_TEMPLATE.format(context=context, conto=text)
-    elif not history:
-        return jsonify(error="Envie o conto como arquivo (.docx, .pdf, .txt ou .md)."), 400
-    elif not message:
-        return jsonify(error="Escreva uma mensagem ou envie um arquivo."), 400
-
-    contents = [
-        types.Content(role=m["role"], parts=[types.Part(text=m["text"])])
-        for m in history
-    ]
-    contents.append(types.Content(role="user", parts=[types.Part(text=message)]))
-
-    try:
-        response = client.models.generate_content(
-            model=MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
-        )
-    except Exception as e:
-        return jsonify(error=f"Erro ao chamar o Gemini: {e}"), 502
-
-    # Devolve a mensagem final (com o conteúdo do arquivo) para compor o histórico.
-    return jsonify(reply=response.text, sent=message)
 
 
 if __name__ == "__main__":
